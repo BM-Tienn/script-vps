@@ -104,7 +104,7 @@ sudo npm install -g pm2
 
 # Cài đặt n8n
 echo "📦 Cài đặt N8N..."
-sudo npm install -g n8n
+sudo npm install -g n8n --no-fund --no-audit --loglevel=error
 
 # ======== Cấu hình PostgreSQL ========
 echo "🛢️ Cấu hình cơ sở dữ liệu PostgreSQL..."
@@ -134,48 +134,37 @@ if [ ! -w "/opt/n8n" ]; then
   chmod -R 755 /opt/n8n
 fi
 
-# ======== Cấu hình PM2 ========
-echo "⚙️ Cấu hình PM2..."
-cat > /opt/n8n/ecosystem.config.js <<EOL
-module.exports = {
-  apps: [{
-    name: "n8n",
-    script: "$(which n8n)",
-    exec_mode: "fork",
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: "1G",
-    log_date_format: "YYYY-MM-DD HH:mm:ss",
-    env: {
-      NODE_ENV: "production",
-      DOMAIN: "${DOMAIN}",
-      VUE_APP_URL_BASE_API: "https://${DOMAIN}",
-      N8N_HOST: "0.0.0.0",
-      N8N_PORT: 5678,
-      N8N_PROTOCOL: "https",
-      N8N_PATH: "/",
-      N8N_BASIC_AUTH_ACTIVE: true,
-      N8N_BASIC_AUTH_USER: "${N8N_BASIC_AUTH_USER}",
-      N8N_BASIC_AUTH_PASSWORD: "${N8N_BASIC_AUTH_PASSWORD}",
-      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY}",
-      DB_TYPE: "postgresdb",
-      DB_POSTGRESDB_HOST: "localhost",
-      DB_POSTGRESDB_PORT: 5432,
-      DB_POSTGRESDB_DATABASE: "${POSTGRES_DB}",
-      DB_POSTGRESDB_USER: "${POSTGRES_USER}",
-      DB_POSTGRESDB_PASSWORD: "${POSTGRES_PASSWORD}",
-      GENERIC_TIMEZONE: "Asia/Ho_Chi_Minh"
-    }
-  }]
-}
+# ======== Cấu hình biến môi trường cho N8N ========
+echo "⚙️ Cấu hình biến môi trường cho N8N..."
+cat > /opt/n8n/.env <<EOL
+NODE_ENV=production
+DOMAIN=${DOMAIN}
+VUE_APP_URL_BASE_API=https://${DOMAIN}
+N8N_HOST=0.0.0.0
+N8N_PORT=5678
+N8N_PROTOCOL=https
+N8N_PATH=/
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+N8N_RUNNERS_ENABLED=true
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=localhost
+DB_POSTGRESDB_PORT=5432
+DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+DB_POSTGRESDB_USER=${POSTGRES_USER}
+DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
 EOL
+
+chmod 600 /opt/n8n/.env
 
 # ======== Khởi chạy N8N bằng PM2 ========
 echo "🚀 Khởi động N8N với PM2..."
 cd /opt/n8n
 pm2 delete n8n 2>/dev/null || true  # Xóa instance cũ nếu có
-pm2 start ecosystem.config.js
+pm2 start n8n --name n8n
 pm2_status=$?
 
 if [ $pm2_status -ne 0 ]; then
@@ -184,15 +173,24 @@ if [ $pm2_status -ne 0 ]; then
 fi
 
 pm2 save
-pm2_startup=$(pm2 startup systemd -u $USER --hp $HOME | tail -n 1)
-sudo bash -c "$pm2_startup"
+
+# Cài đặt PM2 startup theo cách an toàn hơn
+echo "🔄 Cấu hình PM2 khởi động cùng hệ thống..."
+pm2 startup systemd -u $USER --hp $HOME | grep "sudo" | sed -e "s/\$HOME/\/home\/$USER/g" > pm2_startup_command.sh
+chmod +x pm2_startup_command.sh
+sudo ./pm2_startup_command.sh
+rm pm2_startup_command.sh
 
 # Kiểm tra N8N đã chạy chưa
 echo "🔄 Kiểm tra N8N đã chạy chưa..."
-sleep 5
+echo "🔄 Đợi N8N khởi động (30 giây)..."
+sleep 30
 if ! curl -s http://localhost:5678 >/dev/null; then
   echo "⚠️ N8N chưa chạy. Kiểm tra logs để biết thêm thông tin:"
   pm2 logs n8n --lines 20
+  echo ""
+  echo "⚠️ Lưu ý: Nếu thấy cảnh báo 'deprecation warning', đây là thông báo cảnh báo bình thường và không ảnh hưởng đến hoạt động."
+  echo "⚠️ N8N cần thời gian để tạo database và hoàn tất cấu hình. Có thể cần chờ 1-2 phút sau khi cài đặt."
 else
   echo "✅ N8N đã chạy thành công!"
 fi
