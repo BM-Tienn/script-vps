@@ -1,4 +1,0 @@
-${DOMAIN} {
-  reverse_proxy localhost:5678
-  tls ${EMAIL}
-}
