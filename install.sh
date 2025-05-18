@@ -73,7 +73,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl gnupg postgresql build-essential caddy unzip
 
 # Cài Node.js 18.x & PM2
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 sudo npm install -g pm2
 
